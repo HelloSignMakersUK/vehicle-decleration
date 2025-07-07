@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Vehicle Condition Declaration</title>
+  <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.0.0/dist/signature_pad.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 1rem; }
+    input, button { width: 100%; box-sizing: border-box; }
+    input[type="text"], input[type="file"] { padding: 0.5rem; margin: 0.25rem 0 1rem; border-radius: 4px; border: 1px solid #ccc; font-size: 1rem; }
+    button { padding: 1rem; font-size: 1.1rem; margin-bottom: 0.5rem; border: none; border-radius: 8px; background: #007bff; color: #fff; }
+    button:disabled { background: #aaa; }
+    .field { margin-bottom: 1rem; }
+    label { font-weight: bold; display: block; margin-bottom: 0.25rem; }
+    #declarationText { background: #f9f9f9; padding: 1rem; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 1rem; white-space: pre-wrap; }
+    .sig-container { border: 1px solid #ccc; border-radius: 8px; overflow: hidden; margin-bottom: 1rem; }
+    #sigCanvas { display: block; width: 100%; height: 140px; touch-action: none; }
+  </style>
+</head>
+<body>
+  <h1>Vehicle Condition Declaration</h1>
+  <p>Fill in the details, record the vehicle video, review the declaration, then sign to accept or mark if customer is not present.</p>
+
+  <!-- Captured Details -->
+  <div class="field">
+    <label for="jobNumber">Job Number</label>
+    <input type="text" id="jobNumber" placeholder="Enter job number">
+  </div>
+  <div class="field">
+    <label for="customerName">Customer Name (Business)</label>
+    <input type="text" id="customerName" placeholder="Enter customer or business name">
+  </div>
+  <div class="field">
+    <label for="customerContact">Contact Name</label>
+    <input type="text" id="customerContact" placeholder="Enter contact name">
+  </div>
+  <div class="field">
+    <label for="staffName">Staff Member</label>
+    <input type="text" id="staffName" placeholder="Enter your name">
+  </div>
+
+  <!-- Video Input -->
+  <div class="field">
+    <label for="videoInput">Record Vehicle Video</label>
+    <input type="file" id="videoInput" accept="video/*" capture="environment">
+  </div>
+  <!-- Customer not present -->
+  <div class="field">
+    <input type="checkbox" id="notPresent" name="notPresent">
+    <label for="notPresent">Customer not present</label>
+  </div>
+
+  <!-- Declaration Text -->
+  <div id="declarationText">
+    By signing below, I confirm that the accompanying video accurately documents the current visible condition of the vehicle, including all dents, scratches, marks, and any pre-existing damage.
+
+    I acknowledge this inspection is strictly visual and does not address mechanical, structural, or hidden defects.
+
+    I understand that removal of any vinyl, wrap, or graphics may expose underlying paint imperfections or existing bodywork issues,
+    and I accept that the Company is not liable for any damage, paint blemishes, or defects revealed or caused during such removal.
+
+    I hereby release the Company from all liability for wear, corrosion, pre-existing conditions not visible in the video,
+    and any damage arising from vinyl removal on surfaces with poor paint condition.
+  </div>
+
+  <!-- Signature -->
+  <div class="field">
+    <label>Signature</label>
+    <div class="sig-container">
+      <canvas id="sigCanvas"></canvas>
+    </div>
+    <button id="clearSig" type="button">Clear Signature</button>
+  </div>
+
+  <!-- Save Button -->
+  <button id="saveBtn">Save Video & Declaration PDF</button>
+
+  <script>
+    const { jsPDF } = window.jspdf;
+    // Elements
+    const jobInput = document.getElementById('jobNumber');
+    const nameInput = document.getElementById('customerName');
+    const contactInput = document.getElementById('customerContact');
+    const staffInput = document.getElementById('staffName');
+    const videoInput = document.getElementById('videoInput');
+    const notPresentEl = document.getElementById('notPresent');
+    const saveBtn = document.getElementById('saveBtn');
+    const declarationEl = document.getElementById('declarationText');
+    const sigCanvas = document.getElementById('sigCanvas');
+    const clearBtn = document.getElementById('clearSig');
+
+    // Signature pad setup
+    function resizeCanvas() {
+      const ratio = window.devicePixelRatio || 1;
+      sigCanvas.width = sigCanvas.offsetWidth * ratio;
+      sigCanvas.height = sigCanvas.offsetHeight * ratio;
+      sigCanvas.getContext('2d').scale(ratio, ratio);
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+    const sigPad = new SignaturePad(sigCanvas, { backgroundColor: 'rgba(255,255,255,0)' });
+    clearBtn.addEventListener('click', () => { sigPad.clear(); checkEnable(); });
+
+    // Enable save button always
+    saveBtn.disabled = false;
+
+    // Save logic
+    saveBtn.addEventListener('click', async () => {
+      try {
+        const dir = await window.showDirectoryPicker();
+        // Save video file if provided
+        if (videoInput.files.length) {
+          const file = videoInput.files[0];
+          const vHandle = await dir.getFileHandle('video.webm', { create: true });
+          const vWritable = await vHandle.createWritable();
+          await vWritable.write(file);
+          await vWritable.close();
+        }
+        // Create PDF
+        const doc = new jsPDF();
+        doc.setFontSize(12);
+        doc.text('Vehicle Condition Declaration', 10, 20);
+        // Add details
+        doc.text(`Job Number: ${jobInput.value}`, 10, 30);
+        doc.text(`Customer: ${nameInput.value}`, 10, 38);
+        doc.text(`Contact: ${contactInput.value}`, 10, 46);
+        doc.text(`Staff: ${staffInput.value}`, 10, 54);
+        // Declaration text
+        const lines = declarationEl.textContent.split('\n');
+        doc.text(lines, 10, 70, { maxWidth: 190 });
+        // Signature or note
+        if (!sigPad.isEmpty()) {
+          const sigData = sigPad.toDataURL('image/png');
+          doc.addImage(sigData, 'PNG', 10, 140, 80, 30);
+        } else if (notPresentEl.checked) {
+          doc.text('Customer not present on-site.', 10, 140);
+        }
+        // Save PDF
+        const pdfBlob = doc.output('blob');
+        const pHandle = await dir.getFileHandle('declaration.pdf', { create: true });
+        const pWritable = await pHandle.createWritable();
+        await pWritable.write(pdfBlob);
+        await pWritable.close();
+        alert('Saved successfully');
+      } catch (e) {
+        alert('Save failed: ' + e.message);
+      }
+    });
+  </script>
+</body>
+</html>
